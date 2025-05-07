@@ -1,0 +1,6 @@
+python>=3.6
+pandas>=2.2.3
+bs4>=0.0.2
+lxml>=5.4.0
+tqdm>=4.67.1
+unidecode>=1.4.0

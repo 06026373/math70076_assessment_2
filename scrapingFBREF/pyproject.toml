@@ -1,0 +1,24 @@
+[build-system]
+requires = ["setuptools>=42", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "scrapingFBREF"
+version = "0.1.0"
+description = "A scraping tool for FBREF"
+authors = [
+    {name = "Mathis Lecoq", email = "ml3424@ic.ac.uk"}
+]
+license = {text = "MIT"}
+readme = "README.md"
+requires-python = ">=3.6"
+dependencies = [
+    "pandas>=2.2.3",
+    "bs4>=0.0.2",
+    "lxml>=5.4.0",
+    "tqdm>=4.67.1",
+    "unidecode>=1.4.0"
+]
+
+[project.urls]
+"Homepage" = "https://github.com/06026373/math70076_assessment_2"
