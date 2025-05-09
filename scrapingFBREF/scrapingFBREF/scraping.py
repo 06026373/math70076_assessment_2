@@ -24,9 +24,14 @@ def scrapingFBREF(date_start, date_end, league,
     (data.frame): Table with all the data about the players
     """
     # Initialization and test
-    if not (isinstance(date_start, str) or isinstance(date_end, str) 
-            or isinstance(str, float) or isinstance(table_list, list)):
-        raise TypeError("String must be entered")
+    if not isinstance(date_start, str):
+        raise TypeError("String must be entered for date_start, date_end and league.")
+    if not isinstance(date_end, str):
+        raise TypeError("String in 'YYYY-MM-DD' format must be entered for date_start, date_end and league.")
+    if not isinstance(league, str):
+        raise TypeError("String in 'YYYY-MM-DD' format must be entered for date_start, date_end and league.")
+    if not isinstance(table_list, list):
+        raise TypeError("List of string must be entered for table_list")
     url = 'https://fbref.com/fr/matchs/' + date_start
     url_end = 'https://fbref.com/fr/matchs/' + date_end
     league = league + '">'
