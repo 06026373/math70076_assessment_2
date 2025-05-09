@@ -9,7 +9,7 @@ You must install the package from source.
 ### Install from Source (GitHub)
 
 ```bash
-git clone ...
+git clone https://github.com/06026373/math70076_assessment_2/tree/main
 cd scrapingFBREF
 pip install .
 ```
@@ -27,7 +27,7 @@ from scrapingFBREF import scrapingFBREF
 import pandas as pd
 
 # Scrap results for the matches in Premier League for the 29th October 2027 and 30th October 2027
-df = scraping("2017-10-29", "2017-10-31","Premier League")
+df = scrapingFBREF("2017-10-29", "2017-10-31","Premier League")
 df.head(5)
 ```
 
@@ -47,7 +47,7 @@ from scrapingFBREF import scrapingFBREF
 import pandas as pd
 
 # Scrap results for the matches in Premier League for the 29th October 2027 and 30th October 2027
-df = scraping("2017-10-29", "2017-10-31","Ligue 2", ["summary"])
+df = scrapingFBREF("2017-10-29", "2017-10-31","Ligue 2", ["summary"])
 df.head(5)
 
 # Clean the dataset
@@ -57,3 +57,9 @@ df = accent_removal(df)
 df = winner(df)
 df.head(5)
 ```
+
+## Notes
+
+This package is a student project and is not maintained.
+
+The scraping may be a bit long (~ 60 minutes for a complete saisons). It is normal and here to respect the website's rules about scraping. Do not try to increase the speed or your IP will be banned for 1 hour.

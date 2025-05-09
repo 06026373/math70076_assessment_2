@@ -3,3 +3,5 @@ from .cleaning import simple_position, accent_removal, winner, remove_goalkeeper
 
 __all__ = ["scrapingFBREF", "scraping_league", "scrap_match",
             "simple_position", "accent_removal", "winner", "remove_goalkeepers"]
+
+__version__ = '0.1.1'
