@@ -1,0 +1,162 @@
+---
+title: "Data Science Coursework 2"
+author: "06026373"
+date: "2025-05-10"
+output: pdf_document
+---
+
+
+<style type="text/css">
+h1{
+  font-size: 24pt;
+}
+h2{
+  font-size: 18pt;
+}
+body{
+  font-size: 12pt;
+}
+</style>
+
+```{r setup, include = FALSE, tidy=TRUE}
+knitr::opts_chunk$set(
+  collapse = TRUE,
+  comment = "#>"
+)
+include_solutions <- TRUE
+```
+```{r setup2, include=FALSE, tidy=TRUE}
+require(rmarkdown)
+require(knitr)
+require(kableExtra)
+require(data.table)
+require(dplyr)
+require(ggplot2)
+```
+
+# Academic integrity statement
+
+"I, 06026373, certify that this assessed coursework is my own work,
+unless otherwise acknowledged, and includes no plagiarism. I 
+have not discussed my coursework with anyone else except when seeking
+clarification with the module lecturer via email or on MS Teams. I have not
+shared any code underlying my coursework with anyone else prior to submission."
+
+# Part 1 - Introduction
+
+In the last decades, a statistic called "[expected Goal](https://en.wikipedia.org/wiki/Expected_goals)" (xG), has been developed [...]. It represents the likelihood of a shot being scored and is based on several factor like the distance to the goal, the body part used, the distance to the closest defender, \dots It has been constantly improved by new studies during the last decades. However, this likelihood is not just due to luck: the difference in individual competence of each player also plays a significant role. Some players consistently outperform their expected goals, suggesting superior finishing skills, decision-making under pressure, \dots.
+
+This project aims to see if a player scoring more or less than there expected goal can be due to a personal competence of simply luck.
+
+# Part 2 - Data
+
+```{r data, echo = FALSE, tidy = TRUE}
+data.dir <- 'data/'
+out.dir <- 'output/'
+```
+
+We load the data from the website [FBREF](https://fbref.com), which contains a lot of data about each matchs in several leagues. We will use the data from the Premier League, saison 23/24 and 22/23. This data contains a lot of information, however we will only be concerned about: players id, match id, team id, opposite team id, the number of goal of the player in the match, the number of shots, the expected Goal for the player for the match.
+
+```{r data, echo = FALSE, tidy = TRUE}
+################
+# Part 2 - Data#
+################
+
+# Import the data
+file_2324 <- file.path(data.dir, 'Premier_League2324.csv')
+file_2223 <- file.path(data.dir, 'Premier_League2223.csv')
+df_2324 <- as.data.table(read.csv(file_2324))
+df_2223 <- as.data.table(read.csv(file_2223))
+
+# Take only the relevant column:
+# player.tag, team.tag, id_team_A, id_team_B, match.tag, Goals, Shots.Total, xG..Expected.Goals, # Minutes:
+df_2324 <- df_2324[, .('Player' = player.tag,
+                       'Team' = team.tag,
+                       'Team_A' = id_team_A,
+                       'Team_B' = id_team_B,
+                       'Match' = match.tag,
+                       'Goals' = Goals,
+                       'Shots' = Shots.Total,
+                       'xG' = xG..Expected.Goals,
+                       'Minutes' = Minutes
+                        )]
+df_2223 <- df_2223[, .('Player' = player.tag,
+                       'Team' = team.tag,
+                       'Team_A' = id_team_A,
+                       'Team_B' = id_team_B,
+                       'Match' = match.tag,
+                       'Goals' = Goals,
+                       'Shots' = Shots.Total,
+                       'xG' = xG..Expected.Goals,
+                       'Minutes' = Minutes
+                        )]
+
+# Combine both datasets
+df <- bind_rows(df_2223, df_2324)
+
+# Create an Opposite_Team column
+df <- df %>%
+  mutate(
+    Opposite_Team = ifelse(Team == Team_A, Team_B, Team_A)
+  )
+```
+
+We will only keep players that have scored at least 5 goals, or have at least 5 as xG. With this, we are guarantied to have data on players focusing on goals, while still having enough players to analyse:
+```{r data2, echo = FALSE, tidy = TRUE}
+# Create a dataset with only players scoring at least 5 goals or with xG >=5
+df_combined <- df %>%
+  group_by(Player) %>%
+  summarise(
+    total_minutes = sum(Minutes, na.rm = TRUE),
+    total_goals = sum(Goals, na.rm = TRUE),
+    total_xG = sum(xG, na.rm = TRUE)
+  ) %>%
+  filter(total_goals >= 5 |
+           total_xG >= 5)
+
+# Filter the original datasets
+df <- df %>%
+  filter(Player %in% df_combined$Player)
+
+cat('There are ')
+cat(nrow(df))
+cat(' entries, composed of ')
+cat(length(unique(df$Player)))
+cat(' unique players.')
+```
+# Part 3 - Exploratory data analysis
+
+Before any analysis, we will just check the difference between the number of goal of each players and there expected goal. Normally this value should be close to 0 if the expected goal value is well constructed. 
+
+```{r exploratory, echo = FALSE, tidy = TRUE}
+######################################
+# Part 3 - Exploratory data analysis #
+######################################
+
+df_combined$diff <- df_combined$total_goals - df_combined$total_xG
+
+cat('The mean of the difference between the goal scored and xG is: ')
+cat(mean(df_combined$diff))
+cat('\nThe variance of the difference between the goal scored and xG is: ')
+cat(var(df_combined$diff))
+```
+```{r exploratory2, echo = FALSE, tidy = TRUE}
+# Create a graphique to plot the difference
+ggplot(df_combined, aes(x = diff)) +
+  geom_histogram(aes(y = ..density..), binwidth = 1,
+                 fill = "steelblue", color = "black") +
+  stat_function(fun = dnorm, args = list(mean = 0, sd = sqrt(10.5)), color = "red", size = 1) +
+  labs(
+    title = "Distribution de la différence stat_1 - stat_2",
+    x = "Difference",
+    y = "Frequency"
+  ) +
+  theme_minimal()
+```
+We can see that the mean is closed to 0, this suggest that the expected Goal values is a good tool for this analysis. The data is also closed to a normal law, which confirm the robustnest of this statistics. However the variance is only 10.5, which is not a lot as players in the data base played around 50 matchs, so we have only a \pm 0.06 difference. But this is still a lot as there is 38 matchs in a saison, this may result in a difference of 3 goals for the whole season between the players with the best difference, and the worse one. 
+
+
+# Code appendix  
+
+```{r ref.label=knitr::all_labels(), echo = T, eval = F}
+```
