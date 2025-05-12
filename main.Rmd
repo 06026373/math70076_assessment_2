@@ -32,6 +32,8 @@ require(kableExtra)
 require(data.table)
 require(dplyr)
 require(ggplot2)
+require(cmdstanr)
+require(bayesplot)
 ```
 
 # Academic integrity statement
@@ -51,17 +53,17 @@ This project aims to see if a player scoring more or less than there expected go
 # Part 2 - Data
 
 ```{r data, echo = FALSE, tidy = TRUE}
+################
+# Part 2 - Data#
+################
+
 data.dir <- 'data/'
 out.dir <- 'output/'
 ```
 
 We load the data from the website [FBREF](https://fbref.com), which contains a lot of data about each matchs in several leagues. We will use the data from the Premier League, saison 23/24 and 22/23. This data contains a lot of information, however we will only be concerned about: players id, match id, team id, opposite team id, the number of goal of the player in the match, the number of shots, the expected Goal for the player for the match.
 
-```{r data, echo = FALSE, tidy = TRUE}
-################
-# Part 2 - Data#
-################
-
+```{r data2, echo = FALSE, tidy = TRUE}
 # Import the data
 file_2324 <- file.path(data.dir, 'Premier_League2324.csv')
 file_2223 <- file.path(data.dir, 'Premier_League2223.csv')
@@ -102,7 +104,7 @@ df <- df %>%
 ```
 
 We will only keep players that have scored at least 5 goals, or have at least 5 as xG. With this, we are guarantied to have data on players focusing on goals, while still having enough players to analyse:
-```{r data2, echo = FALSE, tidy = TRUE}
+```{r data3, echo = FALSE, tidy = TRUE}
 # Create a dataset with only players scoring at least 5 goals or with xG >=5
 df_combined <- df %>%
   group_by(Player) %>%
@@ -154,6 +156,181 @@ ggplot(df_combined, aes(x = diff)) +
   theme_minimal()
 ```
 We can see that the mean is closed to 0, this suggest that the expected Goal values is a good tool for this analysis. The data is also closed to a normal law, which confirm the robustnest of this statistics. However the variance is only 10.5, which is not a lot as players in the data base played around 50 matchs, so we have only a \pm 0.06 difference. But this is still a lot as there is 38 matchs in a saison, this may result in a difference of 3 goals for the whole season between the players with the best difference, and the worse one. 
+
+So it is interesting to see if the difference between the number of goals and the expected goal is due to luck or personal competence.
+
+# Part 4 - Multi-models analysis
+
+## Theoretical model
+
+To quantify the difference between luck and competence, we will use the following Bayesian hierarchical model:
+$$Y_{i,j} \sim \text{Bernouilli}(p_{i,j})$$
+$$\text{logit}(p_{i,j})=\text{logit}(\text{xG}_{i,j})+\theta_i$$
+$$\theta_i \sim \mathcal{N}(0,\sigma^2)$$
+$$\sigma \sim \text{Exp}(1)$$
+With $Y_{i,j} \in {0,1}$ the categorical variable that take the value 1 if the $j$ shot by the $i$ players was a goal, $\theta_i$ the competence of the player $i$, $\text{xG}_{i,j}$ the expected goal of the $j$ shot by the $i$ players.
+
+However we do not have the expected goal statistic for each shot, we only have the expected goal for the whole match. So we will use the following model instead:
+$$Z_{i,k} \sim \text{Bin}(n_{i,k}, q_{i,k})$$
+
+$$\text{logit}(q_{i,k})=\text{logit} \left (\frac{\text{xG}_{i,k}}{n_{i,k}} \right )+\theta_i$$
+$$\theta_i \sim \mathcal{N}(0,\sigma^2)$$
+$$\sigma \sim \text{Exp}(1)$$
+With $Z_{i,k}$ the number of goal scored by the player $i$ on match $k$, $n_{i,k}$ the number of shot taken by the player $i$ on match $k$, $\text{xG}_{i,k}$ the expected goal for the whole match $k$.
+
+```{r multi-model, echo = FALSE, tidy = TRUE}
+##################################
+# Part 4 - Multi-models analysis #
+##################################
+
+# Stan code
+competence_txt <- "
+data {
+  int<lower=1> N;  // number of entries
+  int<lower=1> P;  // number of players
+  array[N] int<lower=0> Z;  // number of goals scored in the match
+  array[N] int<lower=0> S;  // number of shots in the match
+  vector[N] mean_xG;  //mean of the expected goals of the shots in the match = xG / T
+  array[N] int<lower=1> player_id;
+}
+parameters {
+  vector[P] theta;
+  real<lower=0> sigma;
+}
+transformed parameters {
+  vector[N] q;
+  
+  q = inv_logit(logit(mean_xG) + theta[player_id]);
+}
+model {
+  // Likelihood
+  Z ~ binomial(S, q);
+  // Priors
+  theta ~ normal(0, sigma);
+  sigma ~ exponential(1);
+}
+"
+```
+```{r multi-model2, echo = FALSE, tidy = TRUE}
+# data preparation
+df$xG_mean <- df$xG / df$Shots
+df <- df %>%
+  filter(!is.nan(xG_mean)) # Remove lines with no shots
+df <- df %>%
+  filter(xG_mean <= 1) # Remove lines where xG > shots
+df <- df %>%
+  mutate(xG_mean = ifelse(xG_mean == 1, 0.999,
+                   ifelse(xG_mean == 0, 0.001, xG_mean))) # to avoid problem with inv_logit
+df <- df %>%
+  mutate(Shots = pmax(Shots, Goals))
+df$player_id = as.integer(factor(df$Player)) # Create id for the players
+
+```
+```{r multi-model3, echo = FALSE, tidy = TRUE}
+# compile the model
+competence_filename <- cmdstanr::write_stan_file(
+  gsub('\t',' ', competence_txt ),
+  dir = out.dir,
+  basename = NULL,
+  force_overwrite = FALSE,
+  hash_salt = ""
+)
+competence_compiled <- cmdstanr::cmdstan_model(competence_filename)
+
+# data
+stan_data <- list(
+  N = nrow(df),
+  P = length(unique(df$player_id)),
+  Z = df$Goals,
+  S = df$Shots,
+  mean_xG = df$xG_mean,
+  player_id = df$player_id
+)
+
+# sample
+competence_fit <- competence_compiled$sample(
+  data = stan_data,
+  seed = 6373,
+  chains = 4,
+  parallel_chains = 4,
+  iter_warmup = 500,
+  iter_sampling = 4500,
+  refresh = 500
+)
+
+```
+## Checking convergence
+
+Before analysing the results, we check if the model converges well.
+
+```{r check, echo = FALSE, tidy = TRUE}
+# Check the model
+check <- competence_fit$summary(
+  variables = c('theta','sigma'),
+  posterior::default_summary_measures(),
+  posterior::default_convergence_measures()
+)
+
+cat('The maximum of rhat is: ')
+cat(max(check$rhat))
+cat('\nThe minimum of ess_bulk is: ')
+cat(min(check$ess_bulk))
+cat('\nThe minimum of ess_tail is: ')
+cat(min(check$ess_tail))
+
+```
+We have rhat < 1.1 and ess > 100. So the model seems to converge. Let's check y ploting the "worst" variable:
+
+```{r check2, echo = FALSE, tidy = TRUE, fig.align='center'}
+# parameter with lowest ess_bulk
+competence_worst_var <- check$variable[which.min(check$ess_bulk)]
+
+# extract samples
+competence_po <- competence_fit$draws(
+  variables = c("lp__",competence_worst_var),
+  inc_warmup = FALSE,
+  format = "draws_array"
+  )
+
+# make trace plot
+p <- bayesplot:::mcmc_trace(competence_po,  
+                            pars = c("lp__",competence_worst_var),
+                            facet_args = list(nrow = 2)
+                            )
+p <- p + theme_bw()
+ggsave(file = file.path(out.dir,'competence_worst_trace.png'), 
+       plot = p, 
+       h = 10, 
+       w = 8
+       ) # change
+
+p
+
+```
+Even if we see some spikes, the variable converges. So our model converges.
+
+## Results
+
+We can now
+
+```{r analysis, echo = FALSE, tidy = TRUE}
+competence_po <- competence_fit$draws(
+  variables = c("theta"),
+  inc_warmup = FALSE,
+  format = "draws_df"
+  )
+
+competence_po <- as.data.table(competence_po)
+competence_po <- data.table::melt(competence_po, id.vars = c('.chain','.iteration','.draw') )
+
+competence_po_summary <- 
+  competence_po[,
+            list( summary_value = quantile(value, prob = c(0.025, 0.25, 0.5, 0.75, 0.975)),
+                  summary_name = c('q_lower','iqr_lower','median','iqr_upper','q_upper') 
+                  ),
+            by = 'variable'
+            ]
+```
 
 
 # Code appendix  
