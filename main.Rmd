@@ -46,7 +46,7 @@ shared any code underlying my coursework with anyone else prior to submission."
 
 # Part 1 - Introduction
 
-In the last decades, a statistic called "[expected Goal](https://en.wikipedia.org/wiki/Expected_goals)" (xG), has been developed [...]. It represents the likelihood of a shot being scored and is based on several factor like the distance to the goal, the body part used, the distance to the closest defender, \dots It has been constantly improved by new studies during the last decades. However, this likelihood is not just due to luck: the difference in individual competence of each player also plays a significant role. Some players consistently outperform their expected goals, suggesting superior finishing skills, decision-making under pressure, \dots.
+In the last decades, a statistic called "[expected Goal](https://en.wikipedia.org/wiki/Expected_goals)" (xG), has been developed. It represents the likelihood of a shot being scored and is based on several factor like the distance to the goal, the body part used, the distance to the closest defender, \dots It has been constantly improved by new studies during the last decades. However, this likelihood is not just due to luck: the difference in individual competence of each player also plays a significant role. Some players consistently outperform their expected goals, suggesting superior finishing skills, decision-making under pressure, \dots.
 
 This project aims to see if a player scoring more or less than there expected goal can be due to a personal competence of simply luck. To do this we will construct a Bayesian hierarchical model to try to measure the competence of the players during their shots. Then we will modify our model to also include a defensive competence from the opposing team.
 
