@@ -48,7 +48,7 @@ shared any code underlying my coursework with anyone else prior to submission."
 
 In the last decades, a statistic called "[expected Goal](https://en.wikipedia.org/wiki/Expected_goals)" (xG), has been developed [...]. It represents the likelihood of a shot being scored and is based on several factor like the distance to the goal, the body part used, the distance to the closest defender, \dots It has been constantly improved by new studies during the last decades. However, this likelihood is not just due to luck: the difference in individual competence of each player also plays a significant role. Some players consistently outperform their expected goals, suggesting superior finishing skills, decision-making under pressure, \dots.
 
-This project aims to see if a player scoring more or less than there expected goal can be due to a personal competence of simply luck.
+This project aims to see if a player scoring more or less than there expected goal can be due to a personal competence of simply luck. To do this we will construct a Bayesian hierarchical model to try to measure the competence of the players during their shots. Then we will modify our model to also include a defensive competence from the opposing team.
 
 # Part 2 - Data
 
@@ -149,36 +149,36 @@ ggplot(df_combined, aes(x = diff)) +
                  fill = "steelblue", color = "black") +
   stat_function(fun = dnorm, args = list(mean = 0, sd = sqrt(10.5)), color = "red", size = 1) +
   labs(
-    title = "Distribution de la différence stat_1 - stat_2",
+    title = "Fig.1 - Distribution of the difference between goals and xG",
     x = "Difference",
     y = "Frequency"
   ) +
   theme_minimal()
 ```
-We can see that the mean is closed to 0, this suggest that the expected Goal values is a good tool for this analysis. The data is also closed to a normal law, which confirm the robustnest of this statistics. However the variance is only 10.5, which is not a lot as players in the data base played around 50 matchs, so we have only a \pm 0.06 difference. But this is still a lot as there is 38 matchs in a saison, this may result in a difference of 3 goals for the whole season between the players with the best difference, and the worse one. 
+We can see that the mean is closed to 0, this suggest that the expected Goal values is a good tool for this analysis. The data is also closed to a normal law, which confirm the robustness of this statistics. However the variance is only 10.5, which is not a lot as players in the data base played around 50 matchs, so we have only a $\pm$ 0.06 difference. But this is still a lot as there is 38 matchs in a saison, this may result in a difference of 3 goals for the whole season between the players with the best difference, and the worse one. 
 
 So it is interesting to see if the difference between the number of goals and the expected goal is due to luck or personal competence.
 
-# Part 4 - Multi-models analysis
+# Modeling players competence
 
 ## Theoretical model
 
 To quantify the difference between luck and competence, we will use the following Bayesian hierarchical model:
-$$Y_{i,j} \sim \text{Bernouilli}(p_{i,j})$$
-$$\text{logit}(p_{i,j})=\text{logit}(\text{xG}_{i,j})+\theta_i$$
-$$\theta_i \sim \mathcal{N}(0,\sigma^2)$$
-$$\sigma \sim \text{Exp}(1)$$
+$$Y_{i,j} \sim \text{Bernouilli}(p_{i,j}) \ (1)$$
+$$\text{logit}(p_{i,j})=\text{logit}(\text{xG}_{i,j})+\theta_i \ (2)$$
+$$\theta_i \sim \mathcal{N}(0,\sigma^2) \ (3)$$
+$$\sigma \sim \text{Exp}(1) \ (4)$$
 With $Y_{i,j} \in {0,1}$ the categorical variable that take the value 1 if the $j$ shot by the $i$ players was a goal, $\theta_i$ the competence of the player $i$, $\text{xG}_{i,j}$ the expected goal of the $j$ shot by the $i$ players.
 
 However we do not have the expected goal statistic for each shot, we only have the expected goal for the whole match. So we will use the following model instead:
-$$Z_{i,k} \sim \text{Bin}(n_{i,k}, q_{i,k})$$
+$$Z_{i,k} \sim \text{Bin}(n_{i,k}, q_{i,k}) \ (5)$$
 
-$$\text{logit}(q_{i,k})=\text{logit} \left (\frac{\text{xG}_{i,k}}{n_{i,k}} \right )+\theta_i$$
-$$\theta_i \sim \mathcal{N}(0,\sigma^2)$$
-$$\sigma \sim \text{Exp}(1)$$
+$$\text{logit}(q_{i,k})=\text{logit} \left (\frac{\text{xG}_{i,k}}{n_{i,k}} \right )+\theta_i \ (6)$$
+$$\theta_i \sim \mathcal{N}(0,\sigma^2) \ (7)$$
+$$\sigma \sim \text{Exp}(1) \ (8)$$
 With $Z_{i,k}$ the number of goal scored by the player $i$ on match $k$, $n_{i,k}$ the number of shot taken by the player $i$ on match $k$, $\text{xG}_{i,k}$ the expected goal for the whole match $k$.
 
-```{r multi-model, echo = FALSE, tidy = TRUE}
+```{r player_competence, echo = FALSE, tidy = TRUE}
 ##################################
 # Part 4 - Multi-models analysis #
 ##################################
@@ -190,7 +190,7 @@ data {
   int<lower=1> P;  // number of players
   array[N] int<lower=0> Z;  // number of goals scored in the match
   array[N] int<lower=0> S;  // number of shots in the match
-  vector[N] mean_xG;  //mean of the expected goals of the shots in the match = xG / T
+  vector[N] mean_xG;  //mean of the expected goals of the shots in the match = xG / S
   array[N] int<lower=1> player_id;
 }
 parameters {
@@ -211,7 +211,7 @@ model {
 }
 "
 ```
-```{r multi-model2, echo = FALSE, tidy = TRUE}
+```{r player_competence2, echo = FALSE, tidy = TRUE}
 # data preparation
 df$xG_mean <- df$xG / df$Shots
 df <- df %>%
@@ -226,11 +226,11 @@ df <- df %>%
 df$player_id = as.integer(factor(df$Player)) # Create id for the players
 
 ```
-```{r multi-model3, echo = FALSE, tidy = TRUE}
+```{r player_competence3, echo = FALSE, tidy = TRUE}
 # compile the model
 competence_filename <- cmdstanr::write_stan_file(
   gsub('\t',' ', competence_txt ),
-  dir = out.dir,
+  dir = tempdir(),
   basename = NULL,
   force_overwrite = FALSE,
   hash_salt = ""
@@ -297,22 +297,14 @@ p <- bayesplot:::mcmc_trace(competence_po,
                             pars = c("lp__",competence_worst_var),
                             facet_args = list(nrow = 2)
                             )
-p <- p + theme_bw()
-ggsave(file = file.path(out.dir,'competence_worst_trace.png'), 
-       plot = p, 
-       h = 10, 
-       w = 8
-       ) # change
-
-p
+p + theme_bw() + ggtitle('Fig.2 - Values and log-likelihood of the worst performing variable')
 
 ```
 Even if we see some spikes, the variable converges. So our model converges.
 
 ## Results
 
-We can now
-
+We can now plot the results:
 ```{r analysis, echo = FALSE, tidy = TRUE}
 competence_po <- competence_fit$draws(
   variables = c("theta"),
@@ -331,7 +323,262 @@ competence_po_summary <-
             by = 'variable'
             ]
 ```
+```{r analysis2, echo = FALSE, tidy = TRUE}
+# Create a table with the results
+results <- competence_po_summary[grepl("^theta\\[", variable)]
+results[, player_id := as.integer(gsub("theta\\[([0-9]+)\\]", "\\1", variable))]
+results <- dcast(results, player_id ~ summary_name, value.var = "summary_value")
+```
+```{r analysis3, echo = FALSE, tidy = TRUE, fig.height=9, fig.align='center'}
+# Plot the result
+ggplot(data = results, aes(x = reorder(player_id, median), 
+                           ymin = q_lower, lower = iqr_lower, middle = median,
+                           upper = iqr_upper, ymax = q_upper)) +
+  geom_boxplot(stat = "identity") +
+  coord_flip() +
+  labs(x = NULL, y = "Rates", 
+       title = "Fig.3 - Rates of each players, with 95% confidence intervals") +
+  theme_minimal() +
+  theme(axis.text.y = element_blank(),
+        axis.ticks.y = element_blank())
+```
+We can clearly that the 95% confidence intervals for the rate cross the 0 value for each players. So it seems that the difference between goals numbers and expected goals is not due to a difference in competence between players.
 
+# Adding defensive team competence
+
+## Theoretical model
+
+Our first analysis shows that players have no personal competence that distinguish them when shooting. However players of the defending team may also impact the difference between the number of goals and the expected goal value. Here we will model this effect by replacing equation (6) in the previous model with the following equation:
+
+$$\text{logit}(q_{i,j,k})=\text{logit} \left (\frac{\text{xG}_{i,k}}{n_{i,k}} \right )+\theta_i+\gamma_j \ (9)$$
+With $\gamma_i$ a parameter for the defending team's competence, which as the following prior:
+$$\gamma_j \sim \mathcal{N}(0,\tau^2) \ (10)$$
+$$\tau \sim \text{Exp}(1) \ (11)$$
+We will model the defensive team as only one parameter, even if it is compose of a lot of players with different posts, to keep the model simple and because we cannot know the position of each players at the moment of the shot.
+
+```{r team_competence, echo = FALSE, tidy = TRUE}
+team_txt <- "
+data {
+  int<lower=1> N;  // number of entries
+  int<lower=1> P;  // number of players
+  int<lower=1> Team;  //number of teams
+  array[N] int<lower=0> Z;  // number of goals scored in the match
+  array[N] int<lower=0> S;  // number of shots in the match
+  vector[N] mean_xG;  //mean of the expected goals of the shots in the match = xG / S
+  array[N] int<lower=1> player_id;
+  array[N] int<lower=1> team_id;
+}
+parameters {
+  vector[P] theta;
+  vector[Team] gamma;
+  real<lower=0> sigma;
+  real<lower=0> tau;
+}
+transformed parameters {
+  vector[N] q;
+  
+  q = inv_logit(logit(mean_xG) + theta[player_id] + gamma[team_id]);
+}
+model {
+  // Likelihood
+  Z ~ binomial(S, q);
+  // Priors
+  theta ~ normal(0, sigma);
+  sigma ~ exponential(1);
+  gamma ~ normal(0, tau);
+  tau ~ exponential(1);
+}
+"
+
+# data preparation: add a column for team_id
+df$team_id <- as.integer(factor(df$Team))
+```
+```{r team_competence2, echo = FALSE, tidy = TRUE}
+# compile the model
+team_filename <- cmdstanr::write_stan_file(
+  gsub('\t',' ', team_txt ),
+  dir = tempdir(),
+  basename = NULL,
+  force_overwrite = FALSE,
+  hash_salt = ""
+)
+team_compiled <- cmdstanr::cmdstan_model(team_filename)
+
+# data
+stan_data <- list(
+  N = nrow(df),
+  P = length(unique(df$player_id)),
+  Team = length(unique(df$team_id)),
+  Z = df$Goals,
+  S = df$Shots,
+  mean_xG = df$xG_mean,
+  player_id = df$player_id,
+  team_id = df$team_id
+)
+
+# sample
+team_fit <- team_compiled$sample(
+  data = stan_data,
+  seed = 6373,
+  chains = 4,
+  parallel_chains = 4,
+  iter_warmup = 500,
+  iter_sampling = 4500,
+  refresh = 500
+)
+
+```
+## Checking convergence
+
+Before analysing the results, we check if the model converges well.
+
+```{r check_team, echo = FALSE, tidy = TRUE}
+# Check the model
+check <- team_fit$summary(
+  variables = c('theta', 'gamma'),
+  posterior::default_summary_measures(),
+  posterior::default_convergence_measures()
+)
+
+cat('The maximum of rhat is: ')
+cat(max(check$rhat))
+cat('\nThe minimum of ess_bulk is: ')
+cat(min(check$ess_bulk))
+cat('\nThe minimum of ess_tail is: ')
+cat(min(check$ess_tail))
+
+```
+We have rhat < 1.1 and ess > 100. So the model seems to converge. Let's check y ploting the "worst" variable:
+
+```{r check_team2, echo = FALSE, tidy = TRUE, fig.align='center'}
+# parameter with lowest ess_bulk
+team_worst_var <- check$variable[which.min(check$ess_bulk)]
+
+# extract samples
+team_po <- team_fit$draws(
+  variables = c("lp__",team_worst_var),
+  inc_warmup = FALSE,
+  format = "draws_array"
+  )
+
+# make trace plot
+p <- bayesplot:::mcmc_trace(team_po,  
+                            pars = c("lp__",team_worst_var),
+                            facet_args = list(nrow = 2)
+                            )
+p + theme_bw() + ggtitle('Fig.4 - Values and log-likelihood of the worst performing variable')
+
+```
+Even if we see some spikes, the variable converges. So our model converges.
+
+## Results
+
+We can now plot the results:
+```{r analysis_team, echo = FALSE, tidy = TRUE}
+team_po_player <- team_fit$draws(
+  variables = c("theta"),
+  inc_warmup = FALSE,
+  format = "draws_df"
+  )
+
+team_po_player <- as.data.table(team_po_player)
+team_po_player <- data.table::melt(team_po_player, id.vars = c('.chain','.iteration','.draw') )
+
+team_po_player_summary <- 
+  team_po_player[,
+            list( summary_value = quantile(value, prob = c(0.025, 0.25, 0.5, 0.75, 0.975)),
+                  summary_name = c('q_lower','iqr_lower','median','iqr_upper','q_upper') 
+                  ),
+            by = 'variable'
+            ]
+```
+```{r analysis_team2, echo = FALSE, tidy = TRUE}
+# Create a table with the results
+results_player <- team_po_player_summary[grepl("^theta\\[", variable)]
+results_player[, player_id := as.integer(gsub("theta\\[([0-9]+)\\]", "\\1", variable))]
+results_player <- dcast(results_player, player_id ~ summary_name, value.var = "summary_value")
+```
+```{r analysis_team3, echo = FALSE, tidy = TRUE, fig.height=9, fig.align='center'}
+# Plot the result
+ggplot(data = results_player, aes(x = reorder(player_id, median), 
+                           ymin = q_lower, lower = iqr_lower, middle = median,
+                           upper = iqr_upper, ymax = q_upper)) +
+  geom_boxplot(stat = "identity") +
+  coord_flip() +
+  labs(x = NULL, y = "Rates", 
+       title = "Fig.5 - Rates of each players, with 95% confidence intervals") +
+  theme_minimal() +
+  theme(axis.text.y = element_blank(),
+        axis.ticks.y = element_blank())
+```
+```{r analysis_team4, echo = FALSE, tidy = TRUE}
+team_po_team <- team_fit$draws(
+  variables = c("gamma"),
+  inc_warmup = FALSE,
+  format = "draws_df"
+  )
+
+team_po_team <- as.data.table(team_po_team)
+team_po_team <- data.table::melt(team_po_team, id.vars = c('.chain','.iteration','.draw') )
+
+team_po_team_summary <- 
+  team_po_team[,
+            list( summary_value = quantile(value, prob = c(0.025, 0.25, 0.5, 0.75, 0.975)),
+                  summary_name = c('q_lower','iqr_lower','median','iqr_upper','q_upper') 
+                  ),
+            by = 'variable'
+            ]
+```
+```{r analysis_team5, echo = FALSE, tidy = TRUE}
+# Create a table with the results
+results_team <- team_po_team_summary[grepl("^gamma\\[", variable)]
+results_team[, team_id := as.integer(gsub("gamma\\[([0-9]+)\\]", "\\1", variable))]
+results_team <- dcast(results_team, team_id ~ summary_name, value.var = "summary_value")
+```
+```{r analysis_team6, echo = FALSE, tidy = TRUE, fig.height=9, fig.align='center'}
+# Plot the result
+ggplot(data = results_team, aes(x = reorder(team_id, median), 
+                           ymin = q_lower, lower = iqr_lower, middle = median,
+                           upper = iqr_upper, ymax = q_upper)) +
+  geom_boxplot(stat = "identity") +
+  coord_flip() +
+  labs(x = NULL, y = "Rates", 
+       title = "Fig.5 - Rates of each teams, with 95% confidence intervals") +
+  theme_minimal() +
+  theme(axis.text.y = element_blank(),
+        axis.ticks.y = element_blank())
+```
+The results here confirm our first analysis, the competence of the player still does not have an effect. Furthermore the competence of the defensive team also has no influence: the confidence intervals all cross the rate=0.
+
+# Conclusion
+
+In this report, we have modeled with a Bayesian hierarchical model the competence of players and teams in the Premier League when a shot is made, comparing the expected goal statistic to the real goals count. We have found that there is no significant rate for the players and for the teams. So this statistic is not really useful to determine the competence of a player to shot.
+
+However we can also see that we have large confidence interval, compared to the effect measured. If we had more data we might have be able to notice an effect. For this we will need to collect data on a longer period a time, but this is not useful for coach that would like to select the best players, or improve the competences of their players, or to collect data from other matchs, or even training sessions. Furthermore the expected goal statistics has been copied for several other statistics, like expected pass. The latter is more common and so might be more statistically significant and yields better results in a similar analysis.
+
+Finally, it may be interesting to question the usefulness of the expected goal statistic for this analysis. For example take two players: one is competent in shooting, while the other one is good at passing defenders. If they receive the ball at the same position with a defender in front of them, the first on may try to shot directly while the second one will pass the defender first, which may increasing the probability of scoring. But in our analysis the first player will probably be considered as better. So it would be more interesting to have a statistic constructed from the point the player receive the ball, and not were they shot.
+
+```{r output, echo = FALSE, tidy = TRUE}
+# Ouput the results
+df_player <- unique(df[, .(Player, player_id)])
+df_team <- unique(df[, .(Team, team_id)])
+results <- merge(results, df_player, by='player_id')
+results$player_id <- NULL
+results_player <- merge(results_player, df_player, by='player_id')
+results_player$player_id <- NULL
+results_team <- merge(results_team, df_team, by='team_id')
+results_team$team_id <- NULL
+setcolorder(results, c("Player", "q_lower", "iqr_lower", "median", "iqr_upper", "q_upper"))
+setcolorder(results_player,
+            c("Player", "q_lower", "iqr_lower", "median", "iqr_upper", "q_upper"))
+setcolorder(results_team,
+            c("Team", "q_lower", "iqr_lower", "median", "iqr_upper", "q_upper"))
+```
+```{r output2, echo = FALSE, tidy = TRUE}
+fwrite(results, file.path(out.dir, 'results_players_only.csv'))
+fwrite(results_player, file.path(out.dir, 'results_players_players_and_team.csv'))
+fwrite(results_team, file.path(out.dir, 'results_team_players_and_team.csv'))
+```
 
 # Code appendix  
 
